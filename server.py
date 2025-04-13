@@ -74,12 +74,16 @@ def logout():
 @app.route("/")
 def home():
     return render_template("home.html", session=session.get('user'), pretty=json.dumps(session.get('user'), indent=4))
+
 @app.route("/update_salary", methods=["POST"])
 @login_required
 def update_salary():
     try:
         user_id = session["user"]["userinfo"]["sub"]
-        salary = request.form.get("salary")
+        salary = float(request.form.get("salary") or 0)
+        groceries = float(request.form.get("groceries") or 0)
+        phone = float(request.form.get("phone") or 0)
+        clothing = float(request.form.get("clothing") or 0)
 
         connection = psycopg2.connect(
             user=USER,
@@ -91,12 +95,12 @@ def update_salary():
         cursor = connection.cursor()
 
         # Ensure the user exists
-        cursor.execute("SELECT id FROM users WHERE auth_id = %s", (user_id,))
+        cursor.execute("SELECT id, monthly_salary, groceries, phone, clothing FROM users WHERE auth_id = %s", (user_id,))
         result = cursor.fetchone()
         if result is None:
-            cursor.execute("INSERT INTO users (auth_id, monthly_salary) VALUES (%s, %s)", (user_id, salary))
+            cursor.execute("INSERT INTO users (auth_id, monthly_salary, groceries, phone, clothing) VALUES (%s, %s, %s, %s, %s)", (user_id, salary, groceries, phone, clothing))
         else:
-            cursor.execute("UPDATE users SET monthly_salary = %s WHERE auth_id = %s", (salary, user_id))
+            cursor.execute("UPDATE users SET monthly_salary = %s, groceries = %s, phone = %s, clothing = %s WHERE auth_id = %s",(salary, groceries, phone, clothing, user_id))
 
         connection.commit()
         cursor.close()
@@ -111,6 +115,7 @@ def update_salary():
 def dashboard():
     salary = None
     breakdown = {}
+    chart_data = {}
 
     try:
         connection = psycopg2.connect(
@@ -123,21 +128,38 @@ def dashboard():
         cursor = connection.cursor()
 
         user_id = session["user"]["userinfo"]["sub"]
-        cursor.execute("SELECT monthly_salary FROM users WHERE auth_id = %s", (user_id,))
+        cursor.execute("SELECT monthly_salary, groceries, phone, clothing FROM users WHERE auth_id = %s", (user_id,))
         result = cursor.fetchone()
 
         if result is None:
             cursor.execute("INSERT INTO users (auth_id) VALUES (%s)", (user_id,))
             connection.commit()
-            cursor.execute("SELECT monthly_salary FROM users WHERE auth_id = %s", (user_id,))
+            cursor.execute("SELECT monthly_salary, groceries, phone, clothing FROM users WHERE auth_id = %s", (user_id,))
             result = cursor.fetchone()
 
-        if result and result[0]:
-            salary = float(result[0])
+        if result:
+            salary = float(result[0] or 0)
+            groceries = float(result[1] or 0)
+            phone = float(result[2] or 0)
+            clothing = float(result[3] or 0)
+
+            salary_after_tariff = round(salary * 0.96, 2)  # Apply 20% increase to salary
+            
             breakdown = {
-                "yearly": round(salary * 12, 2),
-                "weekly": round(salary / 4.33, 2),
-                "daily": round(salary / 30, 2)  # Approximate
+                "yearly": round(salary_after_tariff  * 12, 2),
+                "monthly": round(salary_after_tariff, 2),
+                "weekly": round(salary_after_tariff / 4.33, 2),
+                "daily": round(salary_after_tariff / 30, 2)
+            }
+
+            # Example: Apply 20% tariff
+            chart_data = {
+                "before": [groceries, phone, clothing],
+                "after": [
+                    round(groceries * 1.2, 2),
+                    round(phone * 1.15, 2),
+                    round(clothing * 1.1, 2)
+                ]
             }
 
         cursor.close()
@@ -148,11 +170,12 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
-        data=result,
+        data=[salary],
         user=session["user"],
-        pretty=json.dumps(session.get('user'), indent=4),
-        breakdown=breakdown
+        breakdown=breakdown,
+        chart_data=chart_data
     )
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=env.get("PORT", 3000))
