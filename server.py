@@ -91,10 +91,10 @@ def dashboard():
         # Example query
         user_id = session["user"]["userinfo"]["sub"]
         cursor.execute(
-            "INSERT INTO account_balance (user_id) VALUES (%s)",
-            (user_id,)  # Safely insert user_id
+            "INSERT INTO users (auth_id) VALUES (%s)",
+            (user_id,) 
         )
-        cursor.execute("SELECT created_at, account_balance FROM users")
+        cursor.execute("SELECT created_at, auth_id FROM users")
         results = cursor.fetchall()
         for row in results:
             print(row)
@@ -106,7 +106,7 @@ def dashboard():
     except Exception as e:
         print(f"Failed to connect: {e}")
 
-    return render_template("dashboard.html", user=session["user"], pretty=json.dumps(session.get('user'), indent=4))
+    return render_template("dashboard.html", data=results, user=session["user"], pretty=json.dumps(session.get('user'), indent=4))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=env.get("PORT", 3000))
