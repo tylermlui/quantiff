@@ -1,17 +1,57 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Auth0 Example</title>
+  <title>Welcome</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 100px auto;
+      background-color: #f4f6f8;
+      padding: 40px;
+      max-width: 600px;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    }
+    a {
+      display: inline-block;
+      margin-top: 20px;
+      text-decoration: none;
+      background-color: #007BFF;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 6px;
+      transition: background-color 0.2s;
+    }
+    a:hover {
+      background-color: #0056b3;
+    }
+    h1 {
+      color: #333;
+    }
+    p.description {
+      color: #555;
+      font-size: 16px;
+      margin-bottom: 30px;
+    }
+  </style>
 </head>
 <body>
+  <h1>Quantiff</h1>
+  <p class="description">
+    This dashboard helps you estimate how recent tariffs may affect your everyday expenses.
+    Enter your monthly salary, and we’ll break it down for you — including how much you may lose 
+    due to price hikes in goods and services.
+  </p>
+
   {% if session %}
-      <h1>Welcome {{session.userinfo.name}}!</h1>
-      <p><a href="/logout">Logout</a></p>
-      <div><pre>{{pretty}}</pre></div>
-      <a href="/dashboard">Dashboard</a>
+    <h2>Welcome {{ session.userinfo.name }}!</h2>
+    <a href="/dashboard">Go to Dashboard</a><br>
+    <a href="/logout">Logout</a>
   {% else %}
-    <h1>Welcome Guest</h1>
-    <p><a href="/login">Login</a></p>
+    <h2>Welcome Guest</h2>
+    <a href="/login">Login</a>
   {% endif %}
 </body>
 </html>

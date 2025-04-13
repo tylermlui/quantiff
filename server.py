@@ -6,6 +6,8 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import find_dotenv, load_dotenv
 from flask import Flask, redirect, render_template, session, url_for
 from flask import redirect, session, url_for
+from flask import request
+from functools import wraps
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:
@@ -32,13 +34,15 @@ oauth.register( # Registers this app to Auth0 using OAuth
     server_metadata_url=f'https://{env.get("AUTH0_DOMAIN")}/.well-known/openid-configuration'
 )
 
-def login_required(func): # function for protecting routes and ensuring that the user is logged in before accesing the route
-    def secure_function():
-        if "user" not in session:
-            return redirect(url_for("login")) #returns user to login page if no session present
-        return func()
 
+def login_required(func):
+    @wraps(func)  # <-- This line is the fix!
+    def secure_function(*args, **kwargs):
+        if "user" not in session:
+            return redirect(url_for("login"))
+        return func(*args, **kwargs)
     return secure_function
+
 
 @app.route("/login")
 def login():
@@ -70,12 +74,13 @@ def logout():
 @app.route("/")
 def home():
     return render_template("home.html", session=session.get('user'), pretty=json.dumps(session.get('user'), indent=4))
-
-@app.route("/dashboard")
+@app.route("/update_salary", methods=["POST"])
 @login_required
-def dashboard():
+def update_salary():
     try:
-        print("Connecting with:", USER, HOST, DBNAME)
+        user_id = session["user"]["userinfo"]["sub"]
+        salary = request.form.get("salary")
+
         connection = psycopg2.connect(
             user=USER,
             password=PASSWORD,
@@ -83,30 +88,71 @@ def dashboard():
             port=PORT,
             dbname=DBNAME
         )
-        print("Connection successful!")
-        
-        # Create a cursor to execute SQL queries
         cursor = connection.cursor()
-        
-        # Example query
-        user_id = session["user"]["userinfo"]["sub"]
-        cursor.execute(
-            "INSERT INTO users (auth_id) VALUES (%s)",
-            (user_id,) 
-        )
-        cursor.execute("SELECT created_at, auth_id FROM users")
-        results = cursor.fetchall()
-        for row in results:
-            print(row)
-        # Close the cursor and connection
+
+        # Ensure the user exists
+        cursor.execute("SELECT id FROM users WHERE auth_id = %s", (user_id,))
+        result = cursor.fetchone()
+        if result is None:
+            cursor.execute("INSERT INTO users (auth_id, monthly_salary) VALUES (%s, %s)", (user_id, salary))
+        else:
+            cursor.execute("UPDATE users SET monthly_salary = %s WHERE auth_id = %s", (salary, user_id))
+
+        connection.commit()
         cursor.close()
         connection.close()
-        print("Connection closed.")
+    except Exception as e:
+        print(f"Error updating salary: {e}")
+
+    return redirect("/dashboard")
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    salary = None
+    breakdown = {}
+
+    try:
+        connection = psycopg2.connect(
+            user=USER,
+            password=PASSWORD,
+            host=HOST,
+            port=PORT,
+            dbname=DBNAME
+        )
+        cursor = connection.cursor()
+
+        user_id = session["user"]["userinfo"]["sub"]
+        cursor.execute("SELECT monthly_salary FROM users WHERE auth_id = %s", (user_id,))
+        result = cursor.fetchone()
+
+        if result is None:
+            cursor.execute("INSERT INTO users (auth_id) VALUES (%s)", (user_id,))
+            connection.commit()
+            cursor.execute("SELECT monthly_salary FROM users WHERE auth_id = %s", (user_id,))
+            result = cursor.fetchone()
+
+        if result and result[0]:
+            salary = float(result[0])
+            breakdown = {
+                "yearly": round(salary * 12, 2),
+                "weekly": round(salary / 4.33, 2),
+                "daily": round(salary / 30, 2)  # Approximate
+            }
+
+        cursor.close()
+        connection.close()
 
     except Exception as e:
         print(f"Failed to connect: {e}")
 
-    return render_template("dashboard.html", data=results, user=session["user"], pretty=json.dumps(session.get('user'), indent=4))
+    return render_template(
+        "dashboard.html",
+        data=result,
+        user=session["user"],
+        pretty=json.dumps(session.get('user'), indent=4),
+        breakdown=breakdown
+    )
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=env.get("PORT", 3000))
